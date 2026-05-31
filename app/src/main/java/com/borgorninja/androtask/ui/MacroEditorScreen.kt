@@ -2,9 +2,7 @@ package com.borgorninja.androtask.ui
 
 import android.content.Intent
 import android.widget.Toast
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -24,33 +22,24 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.borgorninja.androtask.FloatingOverlayService
 import com.borgorninja.androtask.MacroAccessibilityService
-import com.borgorninja.androtask.MacroAccessibilityService.Companion.RecordingMode
 import com.borgorninja.androtask.data.MacroStep
 import com.borgorninja.androtask.data.StepType
 import com.borgorninja.androtask.viewmodel.MacroViewModel
 import kotlinx.coroutines.delay
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class,
-       ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MacroEditorScreen(navController: NavController, macroId: Long, vm: MacroViewModel) {
     val context      = LocalContext.current
     val currentMacro by vm.currentMacro.collectAsState()
 
-    var name         by remember { mutableStateOf("New Macro") }
-    var desc         by remember { mutableStateOf("") }
+    var name         by remember { mutableStateOf("") }
     var loopCount    by remember { mutableStateOf("1") }
-    var infiniteLoop by remember { mutableStateOf(false) }
-    var loopDelay    by remember { mutableStateOf("0") }
-    var speed        by remember { mutableFloatStateOf(1f) }
-    var recMode      by remember { mutableStateOf(RecordingMode.PASSIVE) }
     val steps        = remember { mutableStateListOf<MacroStep>() }
-    val undoStack    = remember { ArrayDeque<List<MacroStep>>() }
     var isRecording  by remember { mutableStateOf(false) }
-    var editingStep  by remember { mutableStateOf<Pair<Int, MacroStep>?>(null) }
     var initialized  by remember { mutableStateOf(false) }
+    var editingStep  by remember { mutableStateOf<Pair<Int, MacroStep>?>(null) }
 
-    // Fix: reset initialized when macroId changes
     LaunchedEffect(macroId) {
         initialized = false
         if (macroId != 0L) vm.loadMacro(macroId)
@@ -59,378 +48,315 @@ fun MacroEditorScreen(navController: NavController, macroId: Long, vm: MacroView
     LaunchedEffect(currentMacro) {
         if (!initialized && macroId != 0L && currentMacro != null) {
             currentMacro!!.let { mws ->
-                name         = mws.macro.name
-                desc         = mws.macro.description
-                infiniteLoop = mws.macro.loopCount < 0
-                loopCount    = if (mws.macro.loopCount < 0) "1" else mws.macro.loopCount.toString()
-                loopDelay    = mws.macro.loopDelay.toString()
-                speed        = mws.macro.speedMultiplier
+                name      = mws.macro.name
+                loopCount = if (mws.macro.loopCount < 1) "1" else mws.macro.loopCount.toString()
                 steps.clear(); steps.addAll(mws.steps)
             }
             initialized = true
         }
     }
 
+    // Poll recording state and sync step list
     LaunchedEffect(Unit) {
         while (true) {
+            delay(250)
             val svcRec = MacroAccessibilityService.isRecording
             if (isRecording != svcRec) isRecording = svcRec
             if (isRecording) {
-                val recorded = MacroAccessibilityService.recordedSteps.toList()
-                if (recorded.size != steps.size) {
+                val captured = MacroAccessibilityService.recordedSteps.toList()
+                if (captured.size != steps.size) {
                     steps.clear()
-                    steps.addAll(recorded.map { it.copy(macroId = macroId) })
+                    steps.addAll(captured.map { it.copy(macroId = macroId) })
                 }
             }
-            delay(300)
         }
     }
 
-    fun pushUndo() { undoStack.addLast(steps.toList()); if (undoStack.size > 50) undoStack.removeFirst() }
-    fun undo()     { if (undoStack.isNotEmpty()) { steps.clear(); steps.addAll(undoStack.removeLast()) } }
-    fun moveUp(i: Int)   { if (i > 0)              { pushUndo(); val t=steps[i]; steps[i]=steps[i-1]; steps[i-1]=t } }
-    fun moveDown(i: Int) { if (i < steps.size-1)   { pushUndo(); val t=steps[i]; steps[i]=steps[i+1]; steps[i+1]=t } }
+    val accessOk = isAccessibilityEnabled(context)
 
     Scaffold(
         containerColor = BgDark,
         topBar = {
             TopAppBar(
-                title = {
-                    Text(if (macroId == 0L) "New Macro" else "Edit Macro",
-                        fontWeight = FontWeight.SemiBold)
-                },
+                title = { Text(if (macroId == 0L) "New Macro" else "Edit Macro",
+                    fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = SurfaceDark,
-                    titleContentColor = OnBg
-                ),
+                    containerColor = SurfaceDark, titleContentColor = OnBg),
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnBg)
-                    }
-                },
-                actions = {
-                    if (undoStack.isNotEmpty()) {
-                        IconButton(onClick = { undo() }) {
-                            Icon(Icons.Default.Undo, "Undo", tint = OnBg)
-                        }
                     }
                 }
             )
         }
     ) { pad ->
         Column(
-            modifier = Modifier
+            Modifier
                 .fillMaxSize()
                 .padding(pad)
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            OutlinedTextField(value=name, onValueChange={name=it}, label={Text("Macro Name")},
-                modifier=Modifier.fillMaxWidth(), singleLine=true)
-            OutlinedTextField(value=desc, onValueChange={desc=it},
-                label={Text("Description (optional)")},
-                modifier=Modifier.fillMaxWidth(), singleLine=true)
+            Spacer(Modifier.height(4.dp))
 
-            // Loop row
-            Row(horizontalArrangement=Arrangement.spacedBy(8.dp),
-                verticalAlignment=Alignment.CenterVertically) {
-                if (!infiniteLoop) {
-                    OutlinedTextField(value=loopCount, onValueChange={loopCount=it},
-                        label={Text("Loops")}, modifier=Modifier.weight(1f), singleLine=true)
-                }
-                OutlinedTextField(value=loopDelay, onValueChange={loopDelay=it},
-                    label={Text("Loop delay ms")}, modifier=Modifier.weight(1f), singleLine=true)
-                Row(verticalAlignment=Alignment.CenterVertically) {
-                    Checkbox(checked=infiniteLoop, onCheckedChange={infiniteLoop=it})
-                    Text("∞", style=MaterialTheme.typography.titleMedium)
-                }
-            }
+            // Macro name
+            OutlinedTextField(
+                value         = name,
+                onValueChange = { name = it },
+                label         = { Text("Macro name") },
+                modifier      = Modifier.fillMaxWidth(),
+                singleLine    = true,
+                colors        = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor   = Green400,
+                    unfocusedBorderColor = Color(0xFF444444)
+                )
+            )
 
-            // Speed slider
-            Row(verticalAlignment=Alignment.CenterVertically) {
-                Text("Speed:", style=MaterialTheme.typography.labelMedium,
-                    modifier=Modifier.width(52.dp), color=OnBgVariant)
-                Slider(value=speed, onValueChange={speed=it}, valueRange=0.25f..4f,
-                    modifier=Modifier.weight(1f),
-                    colors=SliderDefaults.colors(thumbColor=Green400, activeTrackColor=Green400))
-                Text("%.2fx".format(speed), style=MaterialTheme.typography.labelMedium,
-                    modifier=Modifier.width(44.dp), color=OnBg)
-            }
-
-            // Recording mode
-            Row(verticalAlignment=Alignment.CenterVertically,
-                horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                Text("Mode:", style=MaterialTheme.typography.labelMedium, color=OnBgVariant)
-                RecordingMode.entries.forEach { mode ->
-                    FilterChip(
-                        selected = recMode == mode,
-                        onClick  = {
-                            recMode = mode
-                            MacroAccessibilityService.recordingMode = mode
-                        },
-                        label = { Text(mode.name.lowercase().replaceFirstChar{it.uppercase()}) }
+            // Loop count row
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value         = loopCount,
+                    onValueChange = { loopCount = it.filter { c -> c.isDigit() } },
+                    label         = { Text("Loops") },
+                    modifier      = Modifier.width(100.dp),
+                    singleLine    = true,
+                    colors        = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor   = Green400,
+                        unfocusedBorderColor = Color(0xFF444444)
                     )
-                }
+                )
+                Text("times", style = MaterialTheme.typography.bodySmall, color = OnBgVariant)
             }
 
-            // Record button
+            // ── Big record button ──────────────────────────────────────────────
             Button(
                 onClick = {
-                    if (MacroAccessibilityService.instance == null) {
+                    if (!accessOk) {
                         Toast.makeText(context, "Enable Accessibility Service first!",
                             Toast.LENGTH_LONG).show()
                         return@Button
                     }
-                    val cmd = if (isRecording) FloatingOverlayService.CMD_STOP
-                              else FloatingOverlayService.CMD_START
-                    if (!isRecording) {
-                        MacroAccessibilityService.recordingMode = recMode
+                    if (MacroAccessibilityService.instance == null) {
+                        Toast.makeText(context,
+                            "Accessibility service not connected. Re-enable it in settings.",
+                            Toast.LENGTH_LONG).show()
+                        return@Button
+                    }
+                    if (isRecording) {
+                        // Stop recording — service stops itself and bubble disappears
+                        context.startService(
+                            Intent(context, FloatingOverlayService::class.java)
+                                .putExtra(FloatingOverlayService.CMD, FloatingOverlayService.CMD_STOP)
+                        )
+                    } else {
+                        // Clear previous steps and start
                         MacroAccessibilityService.recordedSteps.clear()
                         steps.clear()
+                        // Start the overlay service which shows the bubble + overlay
+                        context.startService(
+                            Intent(context, FloatingOverlayService::class.java)
+                                .putExtra(FloatingOverlayService.CMD, FloatingOverlayService.CMD_START)
+                        )
+                        Toast.makeText(context,
+                            "Recording started — perform your gestures, then tap the bubble to stop",
+                            Toast.LENGTH_LONG).show()
                     }
-                    context.startService(Intent(context, FloatingOverlayService::class.java)
-                        .putExtra(FloatingOverlayService.CMD, cmd))
                 },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (isRecording) Color(0xFFD32F2F) else Color(0xFF1B5E20)
                 ),
-                modifier = Modifier.fillMaxWidth()
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Icon(if (isRecording) Icons.Default.Stop else Icons.Default.RadioButtonChecked, null)
-                Spacer(Modifier.width(6.dp))
-                Text(if (isRecording) "Stop  (${steps.size} steps captured)" else "Record Gestures")
+                Icon(
+                    if (isRecording) Icons.Default.Stop
+                    else Icons.Default.RadioButtonChecked,
+                    null, modifier = Modifier.size(22.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (isRecording) "Stop recording  (${steps.size} captured)"
+                    else "Start recording",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
 
-            // Steps header
-            Row(verticalAlignment=Alignment.CenterVertically) {
-                Text("Steps (${steps.size})",
-                    style=MaterialTheme.typography.titleSmall,
-                    fontWeight=FontWeight.SemiBold,
-                    modifier=Modifier.weight(1f), color=OnBg)
-                if (!isRecording && steps.isNotEmpty()) {
-                    TextButton(onClick={
-                        val svc = MacroAccessibilityService.instance
-                        if (svc == null) {
-                            Toast.makeText(context,"Enable Accessibility Service",Toast.LENGTH_SHORT).show()
-                        } else {
-                            svc.playSteps(steps.toList(), 1, 0L, speed)
-                            Toast.makeText(context,"▶ preview",Toast.LENGTH_SHORT).show()
+            if (isRecording) {
+                Text(
+                    "Perform your gestures on any app — they're being captured",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OnBgVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+            }
+
+            // ── Step list ──────────────────────────────────────────────────────
+            if (steps.isNotEmpty()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Recorded steps (${steps.size})",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = OnBgVariant,
+                        modifier = Modifier.weight(1f))
+                    if (!isRecording) {
+                        TextButton(onClick = { steps.clear() }) {
+                            Text("Clear", color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.labelSmall)
                         }
-                    }) { Text("Preview", color=Green400) }
+                    }
                 }
-            }
 
-            // Step list
-            LazyColumn(modifier=Modifier.weight(1f)) {
-                itemsIndexed(steps, key={i,_->i}) { index, step ->
-                    StepRow(
-                        step       = step,
-                        index      = index,
-                        total      = steps.size,
-                        isRecording = isRecording,
-                        onEdit     = { editingStep = Pair(index, step) },
-                        onDelete   = { pushUndo(); steps.removeAt(index) },
-                        onMoveUp   = { moveUp(index) },
-                        onMoveDown = { moveDown(index) },
-                        onPlayFrom = {
-                            val svc = MacroAccessibilityService.instance ?: return@StepRow
-                            svc.playSteps(steps.drop(index), 1, 0L, speed)
-                            Toast.makeText(context,"▶ from step ${index+1}",Toast.LENGTH_SHORT).show()
-                        },
-                        onDuplicate = {
-                            pushUndo()
-                            steps.add(index+1, step.copy(id=0, stepIndex=index+1))
-                        }
-                    )
-                }
-            }
-
-            // Manual add chips
-            if (!isRecording) {
-                FlowRow(horizontalArrangement=Arrangement.spacedBy(6.dp),
-                        verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                    StepType.entries.forEach { t ->
-                        AssistChip(
-                            onClick = {
-                                pushUndo()
-                                steps.add(MacroStep(macroId=macroId, stepIndex=steps.size, type=t,
-                                    duration=when(t){StepType.LONG_PRESS->650L;StepType.WAIT->500L;else->100L}))
-                            },
-                            label = {
-                                Text(t.name.replace('_',' ').lowercase().replaceFirstChar{it.uppercase()},
-                                    style=MaterialTheme.typography.labelSmall)
-                            },
-                            colors = AssistChipDefaults.assistChipColors(
-                                containerColor = stepTypeColor(t).copy(alpha = 0.15f),
-                                labelColor     = stepTypeColor(t)
-                            )
+                LazyColumn(
+                    modifier             = Modifier.weight(1f),
+                    verticalArrangement  = Arrangement.spacedBy(4.dp)
+                ) {
+                    itemsIndexed(steps, key = { i, _ -> i }) { index, step ->
+                        SimpleStepRow(
+                            step    = step,
+                            index   = index,
+                            onEdit  = { editingStep = Pair(index, step) },
+                            onDelete = {
+                                steps.removeAt(index)
+                            }
                         )
                     }
                 }
+            } else if (!isRecording) {
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("No steps yet — press Start recording",
+                        style = MaterialTheme.typography.bodySmall, color = OnBgVariant)
+                }
+            } else {
+                Spacer(Modifier.weight(1f))
             }
 
-            // Save
+            // ── Save button ────────────────────────────────────────────────────
             Button(
                 onClick = {
                     val n = name.trim()
                     if (n.isEmpty()) {
-                        Toast.makeText(context,"Enter a name",Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Enter a name", Toast.LENGTH_SHORT).show()
                         return@Button
                     }
+                    if (steps.isEmpty()) {
+                        Toast.makeText(context, "Record at least one step",
+                            Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    val loops = loopCount.toIntOrNull()?.coerceAtLeast(1) ?: 1
                     vm.saveMacro(
-                        name=n, description=desc.trim(),
-                        loopCount=if(infiniteLoop)-1 else loopCount.toIntOrNull()?.coerceAtLeast(1)?:1,
-                        loopDelay=loopDelay.toLongOrNull()?.coerceAtLeast(0L)?:0L,
-                        speedMultiplier=speed,
-                        steps=steps.toList(),
-                        macroId=macroId
+                        name            = n,
+                        description     = "",
+                        loopCount       = loops,
+                        loopDelay       = 0L,
+                        speedMultiplier = 1f,
+                        steps           = steps.toList(),
+                        macroId         = macroId
                     ) {
-                        Toast.makeText(context,"Saved!",Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Saved!", Toast.LENGTH_SHORT).show()
                         navController.popBackStack()
                     }
                 },
-                modifier=Modifier.fillMaxWidth(),
-                enabled=!isRecording,
-                colors=ButtonDefaults.buttonColors(containerColor=Green700)
+                modifier  = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                enabled   = !isRecording && steps.isNotEmpty(),
+                colors    = ButtonDefaults.buttonColors(containerColor = Green700),
+                shape     = RoundedCornerShape(12.dp)
             ) {
                 Icon(Icons.Default.Check, null)
-                Spacer(Modifier.width(6.dp))
-                Text("Save Macro", fontWeight=FontWeight.SemiBold)
+                Spacer(Modifier.width(8.dp))
+                Text("Save macro", fontWeight = FontWeight.SemiBold)
             }
         }
     }
 
     editingStep?.let { (index, step) ->
         StepEditDialog(
-            step = step,
-            onSave = { updated ->
-                pushUndo()
-                steps[index] = updated.copy(macroId=macroId, stepIndex=index)
-                editingStep = null
+            step      = step,
+            onSave    = { updated ->
+                steps[index] = updated.copy(macroId = macroId, stepIndex = index)
+                editingStep  = null
             },
             onDismiss = { editingStep = null }
         )
     }
 }
 
-// ── Step row ──────────────────────────────────────────────────────────────────
-@OptIn(ExperimentalFoundationApi::class)
+// ── Simple read-only step row ─────────────────────────────────────────────────
 @Composable
-fun StepRow(
-    step: MacroStep, index: Int, total: Int, isRecording: Boolean,
-    onEdit: ()->Unit, onDelete: ()->Unit, onMoveUp: ()->Unit,
-    onMoveDown: ()->Unit, onPlayFrom: ()->Unit, onDuplicate: ()->Unit
+fun SimpleStepRow(
+    step: MacroStep, index: Int,
+    onEdit: () -> Unit, onDelete: () -> Unit
 ) {
-    var menuOpen by remember { mutableStateOf(false) }
-    val accent   = stepTypeColor(step.type)
-
+    val accent = stepTypeColor(step.type)
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 3.dp)
-            .combinedClickable(onClick=onEdit, onLongClick={ if(!isRecording) menuOpen=true }),
-        shape  = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = CardDark)
+        modifier = Modifier.fillMaxWidth(),
+        shape    = RoundedCornerShape(8.dp),
+        colors   = CardDefaults.cardColors(containerColor = CardDark),
+        onClick  = onEdit
     ) {
         Row(
-            Modifier.padding(start=8.dp, end=4.dp, top=8.dp, bottom=8.dp),
-            verticalAlignment=Alignment.CenterVertically
+            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Step type color strip
+            // Color strip
             Box(
                 Modifier
-                    .width(4.dp)
-                    .height(36.dp)
+                    .width(3.dp).height(32.dp)
                     .clip(RoundedCornerShape(2.dp))
                     .background(accent)
             )
             Spacer(Modifier.width(10.dp))
 
-            // Reorder arrows
-            if (!isRecording) {
-                Column {
-                    IconButton(onClick=onMoveUp, modifier=Modifier.size(24.dp), enabled=index>0) {
-                        Icon(Icons.Default.KeyboardArrowUp, null, modifier=Modifier.size(16.dp),
-                            tint=if(index>0) OnBgVariant else Color(0xFF444444))
-                    }
-                    IconButton(onClick=onMoveDown, modifier=Modifier.size(24.dp),
-                               enabled=index<total-1) {
-                        Icon(Icons.Default.KeyboardArrowDown, null, modifier=Modifier.size(16.dp),
-                            tint=if(index<total-1) OnBgVariant else Color(0xFF444444))
-                    }
-                }
-                Spacer(Modifier.width(4.dp))
-            }
+            // Step number
+            Text("${index + 1}.",
+                style = MaterialTheme.typography.labelSmall,
+                color = OnBgVariant,
+                modifier = Modifier.width(24.dp))
 
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment=Alignment.CenterVertically,
-                    horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                    Text("${index+1}.", style=MaterialTheme.typography.labelSmall, color=OnBgVariant)
-                    Box(
-                        Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(accent.copy(alpha=0.2f))
-                            .padding(horizontal=6.dp, vertical=2.dp)
-                    ) {
-                        Text(step.type.name.replace('_',' '),
-                            style=MaterialTheme.typography.labelSmall,
-                            fontWeight=FontWeight.Bold, color=accent)
-                    }
-                    if (step.label.isNotBlank()) {
-                        Text("(${step.label})", style=MaterialTheme.typography.labelSmall,
-                            color=MaterialTheme.colorScheme.primary)
-                    }
-                }
+            // Type badge
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(accent.copy(alpha = 0.2f))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
                 Text(
-                    when (step.type) {
-                        StepType.SWIPE, StepType.PINCH ->
-                            "(${step.x.toInt()},${step.y.toInt()})→(${step.x2.toInt()},${step.y2.toInt()})  ${step.duration}ms"
-                        StepType.WAIT         -> "Wait ${step.duration}ms"
-                        StepType.TYPE_TEXT    -> "\"${step.text.take(30)}\""
-                        StepType.BACK, StepType.HOME,
-                        StepType.RECENTS, StepType.NOTIFICATIONS -> step.type.name.lowercase()
-                        StepType.VOLUME_UP,
-                        StepType.VOLUME_DOWN  -> step.type.name.lowercase().replace('_',' ')
-                        StepType.SCROLL_UP,
-                        StepType.SCROLL_DOWN  ->
-                            "${step.type.name.lowercase().replace('_',' ')} at (${step.x.toInt()},${step.y.toInt()})"
-                        else -> "(${step.x.toInt()},${step.y.toInt()})  ${step.duration}ms"
-                    },
-                    style=MaterialTheme.typography.bodySmall, color=OnBgVariant
+                    step.type.name.replace('_', ' ').lowercase()
+                        .replaceFirstChar { it.uppercase() },
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold, color = accent
                 )
-                if (step.delayBefore > 0 || step.jitter > 0) {
-                    val timing = buildList {
-                        if (step.delayBefore > 0) add("delay ${step.delayBefore}ms")
-                        if (step.jitter > 0)      add("±${step.jitter}ms jitter")
-                    }.joinToString("  ")
-                    Text(timing, style=MaterialTheme.typography.labelSmall, color=OnBgVariant)
-                }
             }
+            Spacer(Modifier.width(8.dp))
 
-            if (!isRecording) {
-                Box {
-                    IconButton(onClick={menuOpen=true}, modifier=Modifier.size(32.dp)) {
-                        Icon(Icons.Default.MoreVert, null, modifier=Modifier.size(18.dp), tint=OnBgVariant)
-                    }
-                    DropdownMenu(expanded=menuOpen, onDismissRequest={menuOpen=false},
-                        modifier=Modifier.background(CardDark)) {
-                        DropdownMenuItem(text={Text("Edit")},
-                            leadingIcon={Icon(Icons.Default.Edit,null)},
-                            onClick={menuOpen=false; onEdit()})
-                        DropdownMenuItem(text={Text("Play from here")},
-                            leadingIcon={Icon(Icons.Default.PlayArrow,null)},
-                            onClick={menuOpen=false; onPlayFrom()})
-                        DropdownMenuItem(text={Text("Duplicate")},
-                            leadingIcon={Icon(Icons.Default.ContentCopy,null)},
-                            onClick={menuOpen=false; onDuplicate()})
-                        HorizontalDivider(color=Color(0xFF333333))
-                        DropdownMenuItem(
-                            text={Text("Delete", color=MaterialTheme.colorScheme.error)},
-                            leadingIcon={Icon(Icons.Default.Delete, null,
-                                tint=MaterialTheme.colorScheme.error)},
-                            onClick={menuOpen=false; onDelete()})
-                    }
-                }
+            // Coords / info
+            Text(
+                when (step.type) {
+                    StepType.SWIPE -> "(${step.x.toInt()},${step.y.toInt()})→(${step.x2.toInt()},${step.y2.toInt()})"
+                    StepType.WAIT  -> "${step.duration}ms"
+                    StepType.TYPE_TEXT -> "\"${step.text.take(20)}\""
+                    StepType.BACK, StepType.HOME, StepType.RECENTS, StepType.NOTIFICATIONS,
+                    StepType.VOLUME_UP, StepType.VOLUME_DOWN -> ""
+                    else -> "(${step.x.toInt()}, ${step.y.toInt()})  ${step.duration}ms"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = OnBgVariant,
+                modifier = Modifier.weight(1f)
+            )
+
+            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.Close, "Remove",
+                    modifier = Modifier.size(16.dp), tint = Color(0xFF666666))
             }
         }
     }
