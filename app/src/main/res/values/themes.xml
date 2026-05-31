@@ -1,3 +1,14 @@
-<resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Theme.AndroTask" parent="android:Theme.Material.Light.NoActionBar" />
+<resources>
+    <!--
+        Dark window background prevents white flash before Compose renders.
+        statusBarColor / navigationBarColor kept transparent so Compose
+        can draw edge-to-edge with its own insets handling.
+    -->
+    <style name="Theme.AndroTask" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#0F0F0F</item>
+        <item name="android:statusBarColor">#1A1A1A</item>
+        <item name="android:navigationBarColor">#1A1A1A</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
 </resources>
