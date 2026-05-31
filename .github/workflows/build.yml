@@ -31,7 +31,7 @@ jobs:
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-35" \
-            "build-tools;35.0.0" 2>&1 | grep -v '^\\[=' || true
+            "build-tools;35.0.0" 2>&1 | grep -v '^\[=' || true
 
       - name: Build Debug APK
         id: build_debug
@@ -52,6 +52,30 @@ jobs:
       - name: Build Release APK (unsigned)
         run: gradle :app:assembleRelease --stacktrace
 
+      - name: Sign Release APK
+        run: |
+          # Decode the demo keystore
+          echo "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" | base64 -d > /tmp/androtask-demo.jks
+
+          UNSIGNED=app/build/outputs/apk/release/app-release-unsigned.apk
+          SIGNED=app/build/outputs/apk/release/app-release-signed.apk
+
+          # Align first (required before apksigner)
+          $ANDROID_HOME/build-tools/35.0.0/zipalign -v -p 4 "$UNSIGNED" "$SIGNED"
+
+          # Sign with apksigner (v2 + v3 scheme)
+          $ANDROID_HOME/build-tools/35.0.0/apksigner sign \
+            --ks /tmp/androtask-demo.jks \
+            --ks-pass pass:androtask123 \
+            --ks-key-alias androtask-demo \
+            --key-pass pass:androtask123 \
+            --out "$SIGNED" \
+            "$SIGNED"
+
+          # Verify
+          $ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose "$SIGNED"
+          echo "✅ APK signed successfully"
+
       - name: Upload Debug APK
         if: success()
         uses: actions/upload-artifact@v4
@@ -65,5 +89,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AndroTask-release-unsigned-${{ github.sha }}
-          path: app/build/outputs/apk/release/
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: warn
+
+      - name: Upload Release APK (signed)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AndroTask-release-signed-${{ github.sha }}
+          path: app/build/outputs/apk/release/app-release-signed.apk
           if-no-files-found: warn
