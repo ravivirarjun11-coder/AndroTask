@@ -3,7 +3,8 @@
 
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- mediaPlayback works on Android 10+ and requires no extra runtime permission -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -26,7 +27,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Gesture dispatch + passive recording -->
+        <!-- Gesture dispatch -->
         <service
             android:name=".MacroAccessibilityService"
             android:exported="true"
@@ -40,11 +41,11 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
-        <!-- Floating bubble + coord picker + recording overlay -->
+        <!-- Floating bubble + overlay; mediaPlayback works on API 29+ without extra perms -->
         <service
             android:name=".FloatingOverlayService"
             android:exported="false"
-            android:foregroundServiceType="specialUse" />
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- Quick Settings tile -->
         <service
