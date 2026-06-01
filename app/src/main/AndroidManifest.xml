@@ -3,7 +3,6 @@
 
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!-- mediaPlayback works on Android 10+ and requires no extra runtime permission -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -27,7 +26,6 @@
             </intent-filter>
         </activity>
 
-        <!-- Gesture dispatch -->
         <service
             android:name=".MacroAccessibilityService"
             android:exported="true"
@@ -41,13 +39,11 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
-        <!-- Floating bubble + overlay; mediaPlayback works on API 29+ without extra perms -->
         <service
             android:name=".FloatingOverlayService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
-        <!-- Quick Settings tile -->
         <service
             android:name=".MacroQuickTile"
             android:exported="true"
@@ -59,7 +55,6 @@
             </intent-filter>
         </service>
 
-        <!-- Alarm: macro triggers + boot reschedule -->
         <receiver
             android:name=".MacroAlarmReceiver"
             android:exported="true">
@@ -68,6 +63,17 @@
                 <action android:name="com.borgorninja.androtask.MACRO_TRIGGER" />
             </intent-filter>
         </receiver>
+
+        <!-- FileProvider for sharing log files -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 
