@@ -11,11 +11,7 @@ import androidx.activity.viewModels
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.borgorninja.androtask.ui.AndroTaskTheme
-import com.borgorninja.androtask.ui.HomeScreen
-import com.borgorninja.androtask.ui.MacroEditorScreen
-import com.borgorninja.androtask.ui.OnboardingScreen
-import com.borgorninja.androtask.ui.SettingsScreen
+import com.borgorninja.androtask.ui.*
 import com.borgorninja.androtask.viewmodel.MacroViewModel
 
 class MainActivity : ComponentActivity() {
@@ -24,6 +20,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppLogger.i("Main", "App started")
         createNotificationChannel()
 
         if (Settings.canDrawOverlays(this))
@@ -40,6 +37,7 @@ class MainActivity : ComponentActivity() {
                     }
                     composable("settings")    { SettingsScreen(nav) }
                     composable("onboarding")  { OnboardingScreen(nav) }
+                    composable("logs")        { LogScreen(nav) }
                 }
             }
         }
